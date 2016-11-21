@@ -6,3 +6,9 @@
 ## Notes:
 - The R package `TSA` is used in this project. If the package is not installed, type `install.package('TSA')` in the R console to install it.
 - Reminder: Set your working directory to where your data files are in order to import them successfully.
+
+## Data Files:
+| File | Description |
+| ---- | ---- |
+| `monthly-visits-route-01.csv` | Total number of visits per month for Route 1|
+| `monthly-visits-route-16.csv` | Total number of visits per month for Route 16|
