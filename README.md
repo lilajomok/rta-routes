@@ -10,5 +10,5 @@
 ## Data Files
 | File | Description |
 | ---- | ---- |
-| `monthly-visits-route-01.csv` | Total number of visits per month for Route 1|
-| `monthly-visits-route-16.csv` | Total number of visits per month for Route 16|
+| `route01.txt` | Total number of visits per month for Route 1|
+| `route16.txt` | Total number of visits per month for Route 16|
