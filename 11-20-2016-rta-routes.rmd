@@ -1,0 +1,241 @@
+---
+title: "Time Series Analysis of RTA Boardings, Route 16 (2008-2015)"
+author: 
+  - Lila Jomok
+  - Diego Vila
+  - Jackson Vose
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    theme: simplex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This is a condensed version of a time series project done back in spring 2016 for an Introduction to Statistical Forecasting class. 
+
+# Data
+```{r, message=FALSE, warning=FALSE}
+  # Open TSA library
+  library(TSA)
+
+  # Set to directory where data files are
+  setwd("~/Documents/rta-routes/data/") 
+
+  # Import data files for routes 1 and 16; each file contains monthly numbers of riders
+  route.16 <- ts(read.table(file="route16.txt"), start=c(2008,7), frequency = 12)
+```
+
+Although there are many bus routes, we are interested in Route 16 mainly due to the fact that it runs through UCR (University of California - Riverside). We create a time series data frame `route.16` from the given `.txt` files. It contains *monthly* counts of how many riders take this bus route.
+
+```{r, message=FALSE, warning=FALSE}
+  # Plot time series
+  plot(route.16, ylab="Number of Riders", xlab="Year", main="Riders Per Month - Route 16",type="o") 
+```
+
+The time series plot suggest we can apply a seasonal model since there is a pattern. It also shows that there is an increasing trend over time, especially between years 2008-2013.
+
+-----
+
+# Model Specification
+Data suggests an ARIMA(p,q,d) model. In order to reach stationarity, we look at possible transformations through a Box-Cox transformation with a 95% confidence interval and $\lambda$= 0.5. 
+
+## Transformation
+
+The output suggests a **square root transformation**.
+
+```{r, message=FALSE, warning=FALSE}
+  # Create subset of route 16 from Jan 2008 to Feb 2015
+  route.16.window <- window(route.16, end=c(2015,2))
+  
+  # Use Box-Cox transformation to determine which power transf to use
+  # BoxCox.ar(route.16.window)
+```
+
+Below is the plot of the transformed data:
+```{r, message=FALSE, warning=FALSE}
+  plot(sqrt(route.16.window),ylab="Passengers",xlab="Years",main="Squareroot transformation of Riders per month line 16")
+
+```
+  
+## Differentiation
+The plot of the transformed data still shows stationarity, so we plot the **first degree difference** of the transformation. In addition to the stationarity, the plot still shows an increasing trend.
+  
+```{r, message=FALSE, warning=FALSE}
+  # Differentiation 
+  plot(diff(sqrt(route.16.window),xlab="Years",ylab="First difference", main="First degree difference of the sqrt transformation")) 
+  
+```
+
+The **Augmented Dickey-Fuller Test** verifies the stationarity of the differentiated data with a p-value of 0.01. This value is sufficient to sustain the hypothesis that our data is stationary with a signficance level of $\alpha$ = 0.05.
+
+```{r, message=FALSE, warning=FALSE}
+
+  # Testing Stationarity 
+  adf.test(diff(sqrt(route.16.window))) 
+```
+
+We can now proceed to find the appropriate ARMA(p,q) model by using the sample ACF and PACF with a lag of 12:
+
+```{r, message=FALSE, warning=FALSE}
+  # Sample ACF
+  acf(as.vector(diff(sqrt(route.16.window),lag=12))) 
+```
+
+The **Sample ACF** resembles one of a seasonal MA(1) - it spikes at lag $k=1$ and then drops below the margin of error. The **Sample PACF** also has a similar output.
+
+```{r}
+  # Sample PACF
+  pacf(as.vector(diff(sqrt(route.16.window),lag=12))) 
+```
+
+Both figures suggest that an ARIMA(1,1,1) model is most suitable for our data. To confirm this, we can also look at the **EACF**:
+
+```{r}
+  # Sample EACF
+  eacf(as.vector(diff(sqrt(route.16.window),lag=12))) 
+```
+
+The tip of the EACF is reached at the point (1,1), creating a wedge from there. In addition to the ARIMA(1,1,1) model, another suggested model for the data is an ARI(1,1) model since the sample ACF does not immediately drop below the margin of error. Different results can be obtained if the MA(1) of the ARIMA model is left out.
+
+------
+
+# Model Fitting
+Since we want to estimate how many people ride the bus each month, we will test two different approaches of our model, one with seasonality and one without it.
+
+## ARIMA(1,1,1) non-seasonal
+```{r}
+  # ARIMA(1,1,1) non-seasonal
+  arima111.ns.fit <- arima(sqrt(route.16.window), order=c(1,1,1), method='ML') 
+  arima111.ns.fit
+```
+
+## ARIMA(1,1,1) seasonal
+```{r, message=FALSE, warning=FALSE}
+  # ARIMA(1,1,1) seasonal
+  arima111.fit <- arima(sqrt(route.16.window), order=c(1,1,1), seasonal=list(order=c(1,1,1), period=12), method="ML") 
+  arima111.fit
+```
+The following are the parameters:
+\begin{equation}
+\sqrt{Y_t} = (1+0.3046)\sqrt{Y_{t-1}}-0.3046\sqrt{Y_{t-2}} + e_t - 0.8660e_{t-1}
+\end{equation}
+which is equivalent to:
+\begin{equation}
+\sqrt{Y_t} - \sqrt{Y_{t-1}} = 0.3046(\sqrt{Y_{t-1}} -\sqrt{Y_{t-2}}) + e_t - 0.8660e_{t-1}
+\end{equation}
+
+With ML estimates as $\sigma^2_{e}\approx$ 315.9, $\hat\phi$ = 0.3146, $\hat\theta$ = -0.8660. The approximate 95% confidence intervals for $\hat\phi$ and $\hat\theta$ is (0.065872, 0.543328) and (-0.961452,-0.770548), respectively. We found that $\hat\phi$ and $\hat\theta$ are significantly different from 0.
+
+## ARI(1,1) non-seasonal
+```{r, message=FALSE, warning=FALSE}
+  # ARI(1,1) non-seasonal
+  ari11.ns.fit <- arima(sqrt(route.16.window), order=c(1,1,0), method='ML')
+  ari11.ns.fit
+```
+
+
+## ARI(1,1) seasonal
+```{r, message=FALSE, warning=FALSE}
+  ari11.fit <- arima(sqrt(route.16.window), order=c(1,1,0), seasonal=list(order=c(1,1,0), period=12), method="ML")
+  ari11.fit
+```
+
+-----
+
+# Model Diagnosis
+## Non-Seasonal Models
+```{r, message=FALSE, warning=FALSE}
+  #ARI(1,1) 
+  par(mfrow=c(2,2)) 
+  plot(route.16, ylab="Number of Riders", xlab="Year", main="Riders Per Month -Route 16",type="o") 
+  plot(rstandard(ari11.ns.fit), ylab="Std. Residuals", xlab="Time", type="o") 
+  abline(h=0) 
+  hist(rstandard(ari11.ns.fit), xlab="Std. Residuals", main="") 
+  qqnorm(rstandard(ari11.ns.fit), main="") 
+  qqline(rstandard(ari11.ns.fit), main="") 
+```
+  
+### Normality and Independence
+```{r, message=FALSE, warning=FALSE}
+  # Run Shapiro-Wilks test for normality 
+  shapiro.test(rstandard(ari11.ns.fit))  
+  shapiro.test(rstandard(arima111.ns.fit)) 
+   
+  # Runs test for Independence 
+  runs(rstandard(ari11.ns.fit))  
+  runs(rstandard(arima111.ns.fit)) 
+```
+
+### Residual PACF
+```{r, message=FALSE, warning=FALSE}
+  # Residual PACF 
+  pacf(rstandard(ari11.ns.fit), main="Sample PACF")  
+```
+    
+### Overfitting
+```{r, message=FALSE, warning=FALSE}
+  #ARIMA(1,1,1) 
+  par(mfrow=c(2,2)) 
+  plot(route.16, ylab="Number of Riders", xlab="Year", main="Riders Per Month - Route 16",type="o") 
+  plot(rstandard(arima111.ns.fit), ylab="Std. Residuals", xlab="Time", type="o") 
+  abline(h=0) 
+  hist(rstandard(arima111.ns.fit), xlab="Std. Residuals", main="") 
+  qqnorm(rstandard(arima111.ns.fit), main="") 
+  qqline(rstandard(arima111.ns.fit), main="") 
+  
+  # Residual ACF / PACF 
+  par(mfrow=c(2,2)) 
+  acf(rstandard(arima111.ns.fit), main="Sample ACF") 
+  pacf(rstandard(arima111.ns.fit), main="Sample PACF")
+```
+
+-----
+
+## Seasonal Models
+```{r, message=FALSE, warning=FALSE}
+  #ARI(1,1) 
+  par(mfrow=c(2,2)) 
+  plot(route.16, ylab="Number of Riders", xlab="Year", main="Riders Per Month -Route 16",type="o") 
+  plot(rstandard(ari11.fit), ylab="Std. Residuals", xlab="Time", type="o") 
+  abline(h=0) 
+  hist(rstandard(ari11.fit), xlab="Std. Residuals", main="") 
+  qqnorm(rstandard(ari11.fit), main="") 
+  qqline(rstandard(ari11.fit), main="") 
+```
+
+### Normality and Independence
+```{r, message=FALSE, warning=FALSE}
+  # Run Shapiro-Wilks test for normality 
+  shapiro.test(rstandard(ari11.fit))  
+  shapiro.test(rstandard(arima111.fit)) 
+   
+  # Runs test for Independence 
+  runs(rstandard(ari11.fit))  
+  runs(rstandard(arima111.fit)) 
+```
+
+    
+### Residual PACF
+```{r, message=FALSE, warning=FALSE}
+  # Residual PACF 
+  pacf(rstandard(ari11.fit), main="Sample PACF")  
+```
+
+-----
+# Forecasting
+To test our model, we withold observations from February 2015 to February 2016. The table below summarizes the actual values in March 2015 and January 2016 and the predictions estimated by the four ARIMA and ARI models.
+
+| Time | Observation | ARIMA (1,1,1) Seasonal |ARI (1,1) Seasonal | ARIMA (1,1,1) Non-Seasonal |ARI (1,1) Non-Seasonal |
+| ---- | :---: | :---: | :---: | :---: | :---: |
+| March 2015 | 119.5 | 122.3 | 119.43 | 125.42 | 131.9 |
+| January 2016 | 122.21 | 135.11 | 133.87 | 122.78 | 131.83 |
+
+
+
+
+
